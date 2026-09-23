@@ -1,0 +1,16 @@
+# Blueprint de Render (render.com/docs/blueprint-spec).
+# En Render: New + → Blueprint → conecta este repositorio → Apply.
+# También puede desplegarse a mano como "Web Service" normal:
+#   Build Command: npm install
+#   Start Command: node server/server.js
+services:
+  - type: web
+    name: excitebike-efl-3d
+    runtime: node
+    plan: free
+    buildCommand: npm install
+    startCommand: node server/server.js
+    envVars:
+      - key: NODE_VERSION
+        value: 20.11.0
+    autoDeploy: true
