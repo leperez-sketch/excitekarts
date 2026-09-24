@@ -201,7 +201,11 @@ async function cargarAssets(alProgreso) {
   });
   avisar();
 
-  crearMallasInstanciadas();
+  // OJO: crearMallasInstanciadas() necesita que 'escena' ya exista, y
+  // 'escena' no se crea hasta inicializar() — que ahora se llama más
+  // tarde a propósito (con el canvas ya visible, ver comentario en
+  // inicializar()). Por eso esa llamada NO va aquí: se hace en
+  // construirPista(), que siempre se ejecuta después de inicializar().
 }
 
 function crearMallasInstanciadas() {
@@ -225,6 +229,7 @@ function crearMallasInstanciadas() {
    3. CONSTRUCCIÓN DE LA PISTA (una vez por carrera)
    ================================================================== */
 function construirPista({ codigoSala, longitudPista, numCarriles, obstaculos, pickups }) {
+  crearMallasInstanciadas(); // idempotente: si ya existen, no hace nada
   configPista.longitudPista = longitudPista;
   configPista.numCarriles = numCarriles;
 
