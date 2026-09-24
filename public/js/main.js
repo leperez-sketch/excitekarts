@@ -193,11 +193,21 @@
      ================================================================== */
   function prepararCargaAssets() {
     if (promesaAssets) return promesaAssets;
-    promesaAssets = window.Juego3D.cargarAssets((fraccion) => actualizarBarraCarga(fraccion))
+    const conTimeout = new Promise((_resolve, reject) => {
+      setTimeout(() => reject(new Error('La carga de los gráficos 3D tardó demasiado (>25s). Revisa la conexión y recarga.')), 25000);
+    });
+    promesaAssets = Promise.race([
+      window.Juego3D.cargarAssets((fraccion) => actualizarBarraCarga(fraccion)),
+      conTimeout,
+    ])
       .then(() => { estado.assetsListos = true; actualizarBarraCarga(1); })
       .catch((err) => {
         console.error('[Juego3D] Error cargando assets:', err);
-        mostrarMensajeLobby('No se pudieron cargar los gráficos 3D. Comprueba tu conexión y recarga la página.', true);
+        const mensaje = 'No se pudieron cargar los gráficos 3D: ' + err.message;
+        mostrarMensajeLobby(mensaje, true); // por si aún está en el lobby
+        const etiquetaCarga = document.querySelector('.barra-carga-etiqueta');
+        if (etiquetaCarga) { etiquetaCarga.textContent = '⚠️ ' + mensaje; etiquetaCarga.style.color = 'var(--color-choque)'; }
+        throw err; // para que quien esté esperando esta promesa (la carrera_iniciando) también se entere
       });
     return promesaAssets;
   }
@@ -255,26 +265,34 @@
     estado.horaInicioActual = horaInicio;
 
     mostrarPantalla('juego');
+    const overlay = $('#overlay-cuenta');
+    overlay.classList.remove('oculto'); // visible para AMBOS roles desde ya
 
-    if (estado.rol === 'espectador') {
-      const overlay = $('#overlay-cuenta');
-      overlay.classList.remove('oculto');
-      overlay.textContent = 'Cargando…';
+    try {
+      if (estado.rol === 'espectador') {
+        overlay.textContent = 'Cargando…';
 
-      // El renderer se crea AQUÍ, con el canvas ya visible (mostrarPantalla
-      // ya puso display:flex): así toma las medidas reales del contenedor
-      // en vez de quedarse fijado a un buffer de 1×1 píxel.
-      window.Juego3D.inicializar($('#canvas-juego'));
-      await esperarAssetsListos();
+        // El renderer se crea AQUÍ, con el canvas ya visible (mostrarPantalla
+        // ya puso display:flex): así toma las medidas reales del contenedor
+        // en vez de quedarse fijado a un buffer de 1×1 píxel.
+        window.Juego3D.inicializar($('#canvas-juego'));
+        await esperarAssetsListos();
 
-      window.Juego3D.construirPista({
-        codigoSala: estado.sala, longitudPista: LONGITUD_PISTA, numCarriles: NUM_CARRILES,
-        obstaculos: estado.obstaculos, pickups: estado.pickups,
-      });
-      window.Juego3D.sincronizarJugadores(Array.from(estado.jugadores.values()).map((j) => ({ id: j.id, carril: j.carril })));
+        window.Juego3D.construirPista({
+          codigoSala: estado.sala, longitudPista: LONGITUD_PISTA, numCarriles: NUM_CARRILES,
+          obstaculos: estado.obstaculos, pickups: estado.pickups,
+        });
+        window.Juego3D.sincronizarJugadores(Array.from(estado.jugadores.values()).map((j) => ({ id: j.id, carril: j.carril })));
+      }
+      iniciarCuentaRegresiva(horaInicio);
+    } catch (err) {
+      // Antes esto fallaba EN SILENCIO (pantalla congelada, sin ninguna
+      // pista de qué había pasado). Ahora se ve el error en la propia
+      // pantalla del juego, y queda también en la consola del navegador.
+      console.error('[carrera_iniciando] Fallo al arrancar la carrera:', err);
+      overlay.textContent = '⚠️ Error al cargar. Revisa la consola (F12) y recarga la página.';
+      overlay.classList.add('overlay-cuenta--error');
     }
-
-    iniciarCuentaRegresiva(horaInicio);
   });
 
   function iniciarCuentaRegresiva(horaInicio) {
@@ -748,6 +766,18 @@
     setTimeout(() => location.reload(), 120);
   }
 
+  function mostrarAvisoErrorGlobal(mensaje) {
+    let aviso = document.getElementById('aviso-error-global');
+    if (!aviso) {
+      aviso = document.createElement('div');
+      aviso.id = 'aviso-error-global';
+      aviso.className = 'aviso-error-global';
+      document.body.appendChild(aviso);
+    }
+    aviso.textContent = '⚠️ ' + mensaje;
+    aviso.classList.add('aviso-error-global--visible');
+  }
+
   function inicializarEventosUI() {
     $('#btn-rol-profesor').addEventListener('click', elegirRolProfesor);
     $('#btn-rol-alumno').addEventListener('click', elegirRolAlumno);
@@ -763,6 +793,17 @@
       mostrarPantalla('resultados');
     });
     window.addEventListener('pagehide', () => window.Red.desconectar());
+
+    // Red de seguridad: cualquier error que no se haya previsto explícitamente
+    // en el código ya NO deja la pantalla congelada en silencio — se avisa.
+    window.addEventListener('error', (ev) => {
+      console.error('[Error global]', ev.error || ev.message);
+      mostrarAvisoErrorGlobal('Ha ocurrido un error inesperado. Revisa la consola (F12) para más detalle.');
+    });
+    window.addEventListener('unhandledrejection', (ev) => {
+      console.error('[Promesa no gestionada]', ev.reason);
+      mostrarAvisoErrorGlobal('Ha ocurrido un error inesperado. Revisa la consola (F12) para más detalle.');
+    });
 
     comprobarParametroSala();
     window.Red.conectar();

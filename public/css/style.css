@@ -290,6 +290,13 @@
     padding: 8px 14px; border-radius: var(--radio-chico); text-align: center; max-width: 90%;
   }
 
+  .aviso-error-global {
+    display: none; position: fixed; left: 0; right: 0; bottom: 0; z-index: 999;
+    background: #FF3B57; color: #2A0006; font-weight: 700; font-size: 0.95rem;
+    padding: 10px 16px; text-align: center;
+  }
+  .aviso-error-global--visible { display: block; }
+
   /* --- Ticker de eventos --- */
   .ticker-eventos {
     position: absolute; left: 8px; bottom: 8px;
@@ -380,6 +387,10 @@
     font-family: var(--fuente-display); font-weight: 800;
     font-size: clamp(20px, 10vw, 70px); color: var(--color-primario);
     text-align: center; padding: 20px;
+  }
+  .overlay-cuenta--error {
+    font-size: 1.1rem; font-weight: 700; color: var(--color-choque);
+    background: rgba(11,14,26,0.92); line-height: 1.5;
   }
 
   .overlay-meta {
