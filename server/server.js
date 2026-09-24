@@ -1,23 +1,14 @@
 /* ====================================================================
- * EXCITEBIKE EFL — server.js
+ * EXCITEBIKE EFL — server.js  (v2: rol espectador / jugador)
  * ====================================================================
- * Servidor Express + Socket.io. Hace dos trabajos:
- *   1) Sirve los archivos estáticos de /public (HTML, CSS, JS, modelos).
- *   2) Es la sala de máquinas del multijugador: guarda en memoria qué
- *      sala existe, quién está en cada una y retransmite sus mensajes.
+ * Sirve /public y gestiona las salas por Socket.io.
  *
- * Por qué Socket.io en vez del broker MQTT de la versión anterior:
- * ahora desplegamos en Render, que sí ofrece un proceso Node.js
- * persistente (a diferencia de GitHub Pages, que es solo archivos
- * estáticos). Con un servidor propio, la gestión de salas puede ser
- * AUTORITATIVA de verdad: el roster, el carril de cada jugador y quién
- * es el host los decide este proceso, en memoria, sin necesidad de los
- * trucos de "mensaje retenido" / "Last Will" que hacían falta con MQTT.
- *
- * La física de cada moto/kart la sigue simulando cada cliente por su
- * cuenta (igual que antes): este servidor solo RELEE posiciones y
- * eventos y los reenvía al resto de la sala; así el juego se siente
- * fluido aunque el servidor gratuito de Render tenga latencia variable.
+ * CAMBIO DE ARQUITECTURA respecto a la v1: quien CREA la sala ya no
+ * es "el jugador con el carril más bajo", es un rol aparte que nunca
+ * ocupa un carril ni corre: el ESPECTADOR. Su pantalla (el proyector
+ * de la clase) muestra la carrera en 3D y el código QR para unirse;
+ * cada alumno que se UNE con el código es un JUGADOR y su móvil actúa
+ * solo como mando (pregunta + botones), sin cargar gráficos 3D.
  * ==================================================================== */
 
 const path = require('path');
@@ -28,8 +19,6 @@ const { Server } = require('socket.io');
 const app = express();
 const servidorHttp = createServer(app);
 const io = new Server(servidorHttp, {
-  // Márgenes generosos: el free tier de Render puede tener latencia
-  // alta tras "despertar" de la hibernación por inactividad.
   pingInterval: 15000,
   pingTimeout: 20000,
 });
@@ -37,13 +26,13 @@ const io = new Server(servidorHttp, {
 const PUERTO = process.env.PORT || 3000;
 const MAX_JUGADORES = 6;
 const NIVELES_VALIDOS = new Set(['A1', 'A2', 'B1', 'B2', 'C1']);
-const TIEMPO_INACTIVIDAD_SALA_MS = 3 * 60 * 60 * 1000; // 3 horas
+const TIEMPO_INACTIVIDAD_SALA_MS = 3 * 60 * 60 * 1000;
 
 app.use(express.static(path.join(__dirname, '..', 'public')));
 
 /* ------------------------------------------------------------------
-   Estado en memoria de las salas activas.
-   codigo → { jugadores: Map(socketId → {nombre, nivel, carril}),
+   codigo → { espectadorId: string|null,
+              jugadores: Map(socketId → {nombre, nivel, carril}),
               estadoPartida: 'espera' | 'carrera',
               horaInicio: number|null,
               ultimaActividad: number }
@@ -64,14 +53,6 @@ function limpiarTexto(texto, largoMax) {
   return String(texto || '').trim().slice(0, largoMax).replace(/[<>]/g, '');
 }
 
-function obtenerHostId(sala) {
-  let idMenor = null;
-  for (const [id, j] of sala.jugadores) {
-    if (idMenor === null || j.carril < sala.jugadores.get(idMenor).carril) idMenor = id;
-  }
-  return idMenor;
-}
-
 function siguienteCarrilLibre(sala) {
   const ocupados = new Set(Array.from(sala.jugadores.values()).map((j) => j.carril));
   for (let c = 0; c < MAX_JUGADORES; c++) if (!ocupados.has(c)) return c;
@@ -79,9 +60,8 @@ function siguienteCarrilLibre(sala) {
 }
 
 function rosterPublico(sala) {
-  const idHost = obtenerHostId(sala);
   return Array.from(sala.jugadores.entries())
-    .map(([id, j]) => ({ id, nombre: j.nombre, nivel: j.nivel, carril: j.carril, esHost: id === idHost }))
+    .map(([id, j]) => ({ id, nombre: j.nombre, nivel: j.nivel, carril: j.carril }))
     .sort((a, b) => a.carril - b.carril);
 }
 
@@ -91,27 +71,31 @@ function difundirRoster(codigo) {
   io.to(codigo).emit('jugadores_actualizados', rosterPublico(sala));
 }
 
+function eliminarSalaSiVacia(codigo) {
+  const sala = salas.get(codigo);
+  if (sala && !sala.espectadorId && sala.jugadores.size === 0) salas.delete(codigo);
+}
+
 io.on('connection', (socket) => {
-  // A qué sala pertenece este socket (si pertenece a alguna)
   socket.data.sala = null;
+  socket.data.rol = null;
 
-  socket.on('crear_sala', ({ nombre, nivel }, callback) => {
+  // El anfitrión (pantalla grande / proyector): crea la sala y NUNCA
+  // ocupa un carril — solo lanza la salida y renderiza la carrera.
+  socket.on('crear_sala', (_datos, callback) => {
     if (typeof callback !== 'function') return;
-    const nombreLimpio = limpiarTexto(nombre, 16);
-    if (!nombreLimpio) return callback({ ok: false, error: 'Escribe tu nombre.' });
-    if (!NIVELES_VALIDOS.has(nivel)) return callback({ ok: false, error: 'Nivel no válido.' });
-
     const codigo = generarCodigoSala();
-    const sala = { jugadores: new Map(), estadoPartida: 'espera', horaInicio: null, ultimaActividad: Date.now() };
-    sala.jugadores.set(socket.id, { nombre: nombreLimpio, nivel, carril: 0 });
+    const sala = { espectadorId: socket.id, jugadores: new Map(), estadoPartida: 'espera', horaInicio: null, ultimaActividad: Date.now() };
     salas.set(codigo, sala);
 
     socket.join(codigo);
     socket.data.sala = codigo;
-    callback({ ok: true, codigo, carril: 0, jugadorId: socket.id });
-    difundirRoster(codigo);
+    socket.data.rol = 'espectador';
+    callback({ ok: true, codigo, rol: 'espectador' });
   });
 
+  // Un alumno: se une con el código, entra en un carril y juega desde
+  // su móvil (sin gráficos 3D).
   socket.on('unirse_sala', ({ codigo, nombre, nivel }, callback) => {
     if (typeof callback !== 'function') return;
     const codigoLimpio = limpiarTexto(codigo, 8).toUpperCase();
@@ -130,34 +114,30 @@ io.on('connection', (socket) => {
     sala.ultimaActividad = Date.now();
     socket.join(codigoLimpio);
     socket.data.sala = codigoLimpio;
-    callback({ ok: true, codigo: codigoLimpio, carril, jugadorId: socket.id });
+    socket.data.rol = 'jugador';
+    callback({ ok: true, codigo: codigoLimpio, carril, jugadorId: socket.id, rol: 'jugador' });
     difundirRoster(codigoLimpio);
   });
 
+  // Solo el espectador (anfitrión) puede lanzar la salida.
   socket.on('iniciar_carrera', () => {
     const codigo = socket.data.sala;
     const sala = salas.get(codigo);
-    if (!sala) return;
-    if (obtenerHostId(sala) !== socket.id) return; // solo el host puede lanzar la salida
+    if (!sala || sala.espectadorId !== socket.id) return;
     if (sala.estadoPartida === 'carrera') return;
 
     sala.estadoPartida = 'carrera';
-    // Marca de tiempo absoluta: cada móvil descuenta su propia cuenta
-    // atrás hasta ese instante, así todos arrancan a la vez pese a la
-    // latencia de red distinta de cada uno.
     sala.horaInicio = Date.now() + 3000;
     sala.ultimaActividad = Date.now();
     io.to(codigo).emit('carrera_iniciando', { horaInicio: sala.horaInicio });
   });
 
-  // Posición propia: payload ligero, reenviado tal cual al resto de la sala.
   socket.on('pos', (datos) => {
     const codigo = socket.data.sala;
     if (!codigo || !salas.has(codigo)) return;
     socket.to(codigo).volatile.emit('pos', { id: socket.id, x: datos.x, e: datos.e, t: Date.now() });
   });
 
-  // Eventos puntuales: turbo, choque, power-up, llegada a meta…
   socket.on('evento', (datos) => {
     const codigo = socket.data.sala;
     const sala = salas.get(codigo);
@@ -166,8 +146,6 @@ io.on('connection', (socket) => {
     socket.to(codigo).emit('evento', { id: socket.id, ...datos });
   });
 
-  // Un power-up recogido de la pista: se avisa a todos para que
-  // desaparezca también en sus pantallas (es de un solo uso).
   socket.on('item_recogido', ({ idItem }) => {
     const codigo = socket.data.sala;
     if (!codigo || !salas.has(codigo)) return;
@@ -178,18 +156,23 @@ io.on('connection', (socket) => {
     const codigo = socket.data.sala;
     const sala = salas.get(codigo);
     if (!sala) return;
-    sala.jugadores.delete(socket.id);
-    if (sala.jugadores.size === 0) {
-      salas.delete(codigo);
-    } else {
-      sala.ultimaActividad = Date.now();
+
+    if (socket.data.rol === 'espectador' && sala.espectadorId === socket.id) {
+      sala.espectadorId = null;
+      // La carrera ya en marcha sigue viva para los jugadores (cada uno
+      // corre su propia física); solo se avisa de que la pantalla
+      // grande se ha ido, por si el profesor quiere reconectar.
+      socket.to(codigo).emit('anfitrion_desconectado');
+    } else if (socket.data.rol === 'jugador') {
+      sala.jugadores.delete(socket.id);
       difundirRoster(codigo);
     }
+
+    sala.ultimaActividad = Date.now();
+    eliminarSalaSiVacia(codigo);
   });
 });
 
-// Limpieza periódica de salas abandonadas (higiene de memoria en un
-// proceso de larga duración).
 setInterval(() => {
   const ahora = Date.now();
   for (const [codigo, sala] of salas) {

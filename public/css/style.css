@@ -88,7 +88,9 @@
 
   #pantalla-juego.pantalla--activa { justify-content: flex-start; position: relative; }
 
-  .lienzo-contenedor { position: relative; flex: 1; width: 100%; min-height: 0; background: #8fc7ff; }
+  .area-juego { position: relative; flex: 1; width: 100%; min-height: 0; background: #8fc7ff; }
+  .lienzo-contenedor { position: absolute; inset: 0; }
+  .panel-jugador { position: absolute; inset: 0; }
 }
 
 /* ==================== COMPONENTS ==================== */
@@ -137,6 +139,20 @@
   }
   .campo input:focus, .campo select:focus { outline: none; border-color: var(--color-primario); box-shadow: 0 0 0 3px rgba(34,211,238,0.25); }
   #input-sala { text-transform: uppercase; letter-spacing: 3px; }
+
+  /* --- Elección de rol (profesor / alumno) --- */
+  .eleccion-rol { display: flex; flex-direction: column; gap: 12px; }
+  .tarjeta-rol {
+    display: flex; flex-direction: column; align-items: flex-start; gap: 4px;
+    background: var(--color-panel-alto); border: 1.5px solid var(--color-borde); border-radius: var(--radio);
+    padding: 18px; text-align: left; transition: border-color 120ms ease, transform 90ms ease;
+  }
+  .tarjeta-rol:active { transform: scale(0.98); border-color: var(--color-primario); }
+  .tarjeta-rol__icono { font-size: 1.8rem; }
+  .tarjeta-rol__titulo { font-family: var(--fuente-display); font-size: 0.95rem; font-weight: 700; color: var(--color-texto); }
+  .tarjeta-rol__detalle { font-size: 1rem; color: var(--color-texto-tenue); }
+
+  .form-alumno { display: flex; flex-direction: column; gap: 16px; }
 
   .lobby__acciones { display: flex; flex-direction: column; gap: 10px; margin-top: 4px; }
 
@@ -200,6 +216,14 @@
   }
   .lista-jugadores__insignia--host { color: var(--color-turbo); }
 
+  .qr-contenedor {
+    width: 168px; height: 168px; margin: 4px auto 8px;
+    background: #fff; border-radius: var(--radio); padding: 8px;
+    display: flex; align-items: center; justify-content: center;
+    box-shadow: 0 0 0 3px rgba(34,211,238,0.25);
+  }
+  .qr-instruccion { font-size: 0.95rem; color: var(--color-texto-tenue); margin-bottom: 16px; }
+
   .barra-carga-contenedor { width: 100%; height: 8px; border-radius: 4px; background: var(--color-panel-alto); overflow: hidden; margin-top: 6px; }
   .barra-carga-relleno { height: 100%; width: 0%; background: linear-gradient(90deg, var(--color-primario), var(--color-comodin)); transition: width 160ms ease; }
   .barra-carga-etiqueta { font-size: 0.85rem; color: var(--color-texto-tenue); margin: 6px 0 16px; }
@@ -232,6 +256,38 @@
   .hud__nivel {
     font-family: var(--fuente-display); font-size: 0.75rem; font-weight: 800;
     background: var(--color-turbo); color: #201400; padding: 6px 10px; border-radius: var(--radio-chico);
+  }
+
+  /* --- Panel del jugador (móvil-mando, sin canvas 3D) --- */
+  .panel-jugador {
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 18px;
+    background:
+      radial-gradient(circle at 30% 20%, rgba(34,211,238,0.16), transparent 55%),
+      var(--color-fondo);
+    padding: 24px;
+  }
+  .jugador-icono { font-size: 4.5rem; transition: transform 200ms ease; }
+  .jugador-estado-texto { font-family: var(--fuente-display); font-size: 1.1rem; font-weight: 700; text-align: center; color: var(--color-texto); }
+  .jugador-barra-contenedor { width: min(320px, 80%); height: 14px; border-radius: 7px; background: var(--color-panel-alto); border: 1px solid var(--color-borde); overflow: hidden; }
+  .jugador-barra-relleno { height: 100%; width: 0%; background: linear-gradient(90deg, var(--color-primario), var(--color-turbo)); transition: width 200ms linear; }
+
+  /* --- Marcador en vivo del espectador --- */
+  .leaderboard-espectador {
+    position: absolute; top: 10px; right: 10px; z-index: 6;
+    display: flex; flex-direction: column; gap: 5px; width: 190px;
+  }
+  .leaderboard-espectador li {
+    display: flex; align-items: center; gap: 6px;
+    background: rgba(19,26,46,0.85); border-left: 3px solid var(--color-primario); border-radius: 4px;
+    padding: 5px 8px; font-size: 0.92rem; font-weight: 600; color: var(--color-texto);
+  }
+  .leaderboard-espectador .lb-puesto { font-family: var(--fuente-display); font-size: 0.7rem; color: var(--color-turbo); width: 1.4em; }
+  .leaderboard-espectador .lb-icono { width: 1.1em; text-align: center; }
+
+  .aviso-anfitrion {
+    position: absolute; top: 8px; left: 50%; transform: translateX(-50%); z-index: 30;
+    background: rgba(255,59,87,0.92); color: #2A0006; font-weight: 700; font-size: 0.9rem;
+    padding: 8px 14px; border-radius: var(--radio-chico); text-align: center; max-width: 90%;
   }
 
   /* --- Ticker de eventos --- */
@@ -341,6 +397,18 @@
   .boton--oculto { display: none !important; }
 
   #canvas-juego { display: block; width: 100%; height: 100%; }
+
+  /* Visibilidad por rol: #app recibe data-rol="espectador"|"jugador"
+     en cuanto se conoce (ver main.js). Antes de saberlo, ambos bloques
+     quedan ocultos. Cada elemento conserva su propio "display" (flex,
+     block...) definido en su clase; aquí solo se oculta el que no
+     corresponde al rol actual, nunca se fuerza el que sí corresponde. */
+  #app:not([data-rol]) .solo-espectador,
+  #app:not([data-rol]) .solo-jugador,
+  #app[data-rol="jugador"] .solo-espectador,
+  #app[data-rol="espectador"] .solo-jugador {
+    display: none !important;
+  }
 
   @media (max-height: 360px) {
     html, body { font-size: 15px; }

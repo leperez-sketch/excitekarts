@@ -114,6 +114,10 @@ function cargarGLB(ruta) {
    1. INICIALIZACIÓN DE LA ESCENA
    ================================================================== */
 function inicializar(elementoCanvas) {
+  // Si ya existe un renderer (p. ej. se llama dos veces por error), no
+  // lo recreamos: basta con recalcular el tamaño con las medidas reales.
+  if (renderer) { canvas = elementoCanvas; redimensionar(); return; }
+
   canvas = elementoCanvas;
   escena = new THREE.Scene();
   escena.background = new THREE.Color(COLOR_CIELO);
@@ -145,11 +149,22 @@ function inicializar(elementoCanvas) {
   escena.add(grupoObstaculos, grupoPickups, grupoDecoracion);
 
   window.addEventListener('resize', redimensionar);
+  // En móviles, el cambio de tamaño real tras "orientationchange" puede
+  // llegar con retraso respecto al evento; un pequeño margen evita medir
+  // el tamaño justo antes de que el navegador termine de re-maquetar.
+  window.addEventListener('orientationchange', () => setTimeout(redimensionar, 250));
   redimensionar();
 }
 
 function redimensionar() {
   if (!renderer || !canvas) return;
+  // IMPORTANTE: si el canvas está dentro de una pantalla con
+  // display:none (p. ej. porque Juego3D.inicializar se llamó mientras
+  // aún se estaba en la sala de espera), clientWidth/clientHeight
+  // valen 0 y el renderer se quedaría fijado a un buffer de 1×1 px
+  // estirado a toda la pantalla (se ve como un color sólido fijo). Por
+  // eso main.js llama a redimensionar() justo DESPUÉS de mostrar la
+  // pantalla de juego, cuando el canvas ya tiene medidas reales.
   const ancho = canvas.clientWidth || 1;
   const alto = canvas.clientHeight || 1;
   camara.aspect = ancho / alto;

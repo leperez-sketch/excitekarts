@@ -1,12 +1,19 @@
 /* ====================================================================
- * EXCITEBIKE EFL — main.js
+ * EXCITEBIKE EFL — main.js  (v2: rol espectador / jugador)
  * ====================================================================
- * Aquí vive TODA la lógica del juego (física local, preguntas,
- * power-ups, marcador). No sabe nada de Three.js: cada frame le pasa
- * a Juego3D un objeto plano con posiciones/estados y es juego3d.js
- * quien decide cómo dibujarlo. Esta separación es la misma que en la
- * versión 2D anterior (game.js), solo que ahora "dibujar" significa
- * "actualizar una escena 3D" en vez de "pintar un <canvas> 2D".
+ * Dos experiencias totalmente distintas comparten este archivo:
+ *
+ *  - ESPECTADOR (la pantalla grande / proyector del profesor): crea la
+ *    sala, muestra el QR, y cuando arranca la carrera es la ÚNICA
+ *    pantalla que carga Three.js y dibuja el circuito en 3D. Sigue con
+ *    la cámara a quien vaya líder en cada momento (todas las motos le
+ *    llegan por red, no tiene "mi propio" jugador).
+ *
+ *  - JUGADOR (el móvil de cada alumno): se une con el código, y su
+ *    física/preguntas/power-ups funcionan exactamente igual que antes,
+ *    pero JAMÁS toca Juego3D ni carga modelos 3D — su pantalla es un
+ *    panel plano con un icono de estado y una barra de progreso. Así
+ *    el móvil del alumno no descarga ni un byte de gráficos 3D.
  * ==================================================================== */
 
 (function () {
@@ -16,16 +23,12 @@
      1. CONFIGURACIÓN DE LA CARRERA
      ================================================================== */
   const NUM_CARRILES = 6;
-  const LONGITUD_PISTA = 400;   // metros — ritmo pensado para ~45-70s de carrera
+  const LONGITUD_PISTA = 400;
   const NUM_OBSTACULOS = 5;
-  const VELOCIDAD_BASE = 10;    // m/s en ritmo normal (~36 km/h)
+  const VELOCIDAD_BASE = 10;
   const DURACION_TURBO_MS = 1800;
-  const INTERVALO_PUBLICACION_POS = 150; // ms entre publicaciones de posición
+  const INTERVALO_PUBLICACION_POS = 150;
 
-  // Hándicap por nivel (ver razonamiento detallado en la versión 2D):
-  // los niveles altos fallan más preguntas (son más difíciles), así que
-  // su turbo es algo mayor y su penalización de choque algo menor; a la
-  // inversa en los niveles bajos, donde acertar es más frecuente.
   const CONFIG_NIVELES = {
     A1: { turboMultiplicador: 1.8, penalizacionSegundos: 2.6 },
     A2: { turboMultiplicador: 1.9, penalizacionSegundos: 2.3 },
@@ -34,15 +37,13 @@
     C1: { turboMultiplicador: 2.4, penalizacionSegundos: 1.4 },
   };
 
-  // Paleta aproximada para el color de carril en la lista del lobby
-  // (el color real del kart en 3D sale de rotar el tono de variation-a.png;
-  // esto solo es una referencia visual consistente para el HTML plano).
   const COLOR_CARRIL_CSS = ['#FF5C7A', '#5CDB6B', '#FFD23D', '#4AA8FF', '#FF8A3D', '#B36BFF'];
 
   /* ==================================================================
      2. ESTADO GLOBAL
      ================================================================== */
   const estado = {
+    rol: null, // 'espectador' | 'jugador'
     sala: null, jugadorId: null, nombre: '', nivel: 'B1', carril: null,
     jugadores: new Map(),
     resultados: [],
@@ -61,6 +62,7 @@
 
     assetsListos: false,
     intervaloPublicacion: null,
+    ultimaActualizacionUIEspectador: 0,
   };
 
   let promesaAssets = null;
@@ -95,19 +97,53 @@
     return obstaculos;
   }
 
+  function iconoEstado(estadoMoto) {
+    if (estadoMoto === 'turbo') return '⚡';
+    if (estadoMoto === 'choque') return '💥';
+    if (estadoMoto === 'meta') return '🏁';
+    if (estadoMoto === 'pregunta') return '❓';
+    return '🏍️';
+  }
+
   /* ==================================================================
-     4. LOBBY: crear / unirse a sala (vía Socket.io, con promesas)
+     4. LOBBY: elección de rol + entrada a sala
      ================================================================== */
-  async function crearSala() {
-    const nombre = $('#input-nombre').value.trim();
-    if (!nombre) return mostrarMensajeLobby('Escribe tu nombre para continuar.', true);
-    estado.nombre = nombre;
-    estado.nivel = $('#select-nivel').value;
+  function elegirRolProfesor() {
+    $('#eleccion-rol').classList.add('oculto');
+    crearSalaComoEspectador();
+  }
+
+  function elegirRolAlumno() {
+    $('#eleccion-rol').classList.add('oculto');
+    $('#form-alumno').classList.remove('oculto');
+  }
+
+  function volverEleccion() {
+    $('#form-alumno').classList.add('oculto');
+    $('#eleccion-rol').classList.remove('oculto');
+    mostrarMensajeLobby('', false);
+  }
+
+  function comprobarParametroSala() {
+    const codigo = new URLSearchParams(location.search).get('sala');
+    if (!codigo) return;
+    $('#eleccion-rol').classList.add('oculto');
+    $('#form-alumno').classList.remove('oculto');
+    $('#input-sala').value = codigo.toUpperCase();
+    $('#input-nombre').focus();
+  }
+
+  async function crearSalaComoEspectador() {
     mostrarMensajeLobby('Creando sala…', false);
     try {
-      const resp = await window.Red.crearSala(nombre, estado.nivel);
+      const resp = await window.Red.crearSala();
+      estado.rol = 'espectador';
+      $('#app').dataset.rol = 'espectador';
       entrarEnSala(resp);
-    } catch (err) { mostrarMensajeLobby(err.message, true); }
+    } catch (err) {
+      mostrarMensajeLobby(err.message, true);
+      $('#eleccion-rol').classList.remove('oculto');
+    }
   }
 
   async function unirseSala() {
@@ -120,28 +156,43 @@
     mostrarMensajeLobby('Uniéndote a la sala…', false);
     try {
       const resp = await window.Red.unirseSala(codigo, nombre, estado.nivel);
+      estado.rol = 'jugador';
+      $('#app').dataset.rol = 'jugador';
       entrarEnSala(resp);
     } catch (err) { mostrarMensajeLobby(err.message, true); }
   }
 
   function entrarEnSala(resp) {
     estado.sala = resp.codigo;
-    estado.jugadorId = resp.jugadorId;
-    estado.carril = resp.carril;
     estado.obstaculos = generarObstaculos(resp.codigo);
     estado.pickups = window.POWERUPS.generarPickups(resp.codigo, LONGITUD_PISTA, NUM_CARRILES, estado.obstaculos.map((o) => o.x));
-
     $('#codigo-sala-grande').textContent = estado.sala;
+
+    if (estado.rol === 'jugador') {
+      estado.jugadorId = resp.jugadorId;
+      estado.carril = resp.carril;
+    } else {
+      generarQR(resp.codigo);
+      prepararCargaAssets(); // solo el espectador descarga Three.js/GLB
+    }
+
     mostrarPantalla('espera');
-    prepararEscenaYCargarAssets(); // carga los modelos 3D en segundo plano mientras se espera
+  }
+
+  function generarQR(codigo) {
+    const contenedor = $('#qr-contenedor');
+    if (!contenedor || typeof QRCode === 'undefined') return;
+    contenedor.innerHTML = '';
+    const url = `${location.origin}${location.pathname}?sala=${codigo}`;
+    // eslint-disable-next-line no-undef
+    new QRCode(contenedor, { text: url, width: 150, height: 150, colorDark: '#0B0E1A', colorLight: '#ffffff' });
   }
 
   /* ==================================================================
-     5. CARGA DE LA ESCENA 3D (en cuanto se entra a una sala)
+     5. CARGA DE ASSETS 3D (solo espectador)
      ================================================================== */
-  function prepararEscenaYCargarAssets() {
+  function prepararCargaAssets() {
     if (promesaAssets) return promesaAssets;
-    window.Juego3D.inicializar($('#canvas-juego'));
     promesaAssets = window.Juego3D.cargarAssets((fraccion) => actualizarBarraCarga(fraccion))
       .then(() => { estado.assetsListos = true; actualizarBarraCarga(1); })
       .catch((err) => {
@@ -159,7 +210,7 @@
   }
 
   /* ==================================================================
-     6. ROSTER DE LA SALA (lo manda el servidor, siempre autoritativo)
+     6. ROSTER DE LA SALA
      ================================================================== */
   window.Red.on('roster', (roster) => {
     const idsNuevos = new Set(roster.map((j) => j.id));
@@ -169,14 +220,14 @@
     roster.forEach((j) => {
       const existente = estado.jugadores.get(j.id);
       const datos = {
-        id: j.id, nombre: j.nombre, nivel: j.nivel, carril: j.carril, esHost: j.esHost,
+        id: j.id, nombre: j.nombre, nivel: j.nivel, carril: j.carril,
         xAct: 0, xAnt: 0, tAct: 0, tAnt: 0, xRender: 0, estadoMoto: 'normal',
       };
       if (existente) Object.assign(existente, datos); else estado.jugadores.set(j.id, datos);
     });
 
     actualizarListaJugadoresUI();
-    if (estado.pantallaActual === 'juego') {
+    if (estado.rol === 'espectador' && estado.pantallaActual === 'juego') {
       window.Juego3D.sincronizarJugadores(Array.from(estado.jugadores.values()).map((j) => ({ id: j.id, carril: j.carril })));
     }
   });
@@ -185,27 +236,18 @@
     const ul = $('#lista-jugadores');
     if (!ul) return;
     const ordenados = Array.from(estado.jugadores.values()).sort((a, b) => a.carril - b.carril);
-
     ul.innerHTML = ordenados.map((j) => `
       <li class="lista-jugadores__item">
         <span class="lista-jugadores__color" style="background:${COLOR_CARRIL_CSS[j.carril % COLOR_CARRIL_CSS.length]}"></span>
         <span class="lista-jugadores__nombre">${escaparHtml(j.nombre)}${j.id === estado.jugadorId ? ' (tú)' : ''}</span>
-        <span class="lista-jugadores__insignia${j.esHost ? ' lista-jugadores__insignia--host' : ''}">${j.esHost ? 'HOST' : j.nivel}</span>
+        <span class="lista-jugadores__insignia">${j.nivel}</span>
       </li>`).join('');
-
-    const yo = estado.jugadores.get(estado.jugadorId);
-    const soyHost = yo ? yo.esHost : false;
-    $('#btn-iniciar-carrera').classList.toggle('boton--oculto', !soyHost);
-    $('#espera-mensaje').classList.toggle('oculto', soyHost);
   }
 
-  function iniciarCarrera() {
-    const yo = estado.jugadores.get(estado.jugadorId);
-    if (yo && yo.esHost) window.Red.iniciarCarrera();
-  }
+  function iniciarCarrera() { window.Red.iniciarCarrera(); }
 
   /* ==================================================================
-     7. SALIDA DE LA CARRERA (cuenta atrás sincronizada por el servidor)
+     7. SALIDA DE LA CARRERA
      ================================================================== */
   window.Red.on('carrera_iniciando', async ({ horaInicio }) => {
     if (estado.corriendo || (estado.enCuentaRegresiva && estado.horaInicioActual === horaInicio)) return;
@@ -213,17 +255,24 @@
     estado.horaInicioActual = horaInicio;
 
     mostrarPantalla('juego');
-    const overlay = $('#overlay-cuenta');
-    overlay.classList.remove('oculto');
-    overlay.textContent = 'Cargando…';
 
-    await esperarAssetsListos();
+    if (estado.rol === 'espectador') {
+      const overlay = $('#overlay-cuenta');
+      overlay.classList.remove('oculto');
+      overlay.textContent = 'Cargando…';
 
-    window.Juego3D.construirPista({
-      codigoSala: estado.sala, longitudPista: LONGITUD_PISTA, numCarriles: NUM_CARRILES,
-      obstaculos: estado.obstaculos, pickups: estado.pickups,
-    });
-    window.Juego3D.sincronizarJugadores(Array.from(estado.jugadores.values()).map((j) => ({ id: j.id, carril: j.carril })));
+      // El renderer se crea AQUÍ, con el canvas ya visible (mostrarPantalla
+      // ya puso display:flex): así toma las medidas reales del contenedor
+      // en vez de quedarse fijado a un buffer de 1×1 píxel.
+      window.Juego3D.inicializar($('#canvas-juego'));
+      await esperarAssetsListos();
+
+      window.Juego3D.construirPista({
+        codigoSala: estado.sala, longitudPista: LONGITUD_PISTA, numCarriles: NUM_CARRILES,
+        obstaculos: estado.obstaculos, pickups: estado.pickups,
+      });
+      window.Juego3D.sincronizarJugadores(Array.from(estado.jugadores.values()).map((j) => ({ id: j.id, carril: j.carril })));
+    }
 
     iniciarCuentaRegresiva(horaInicio);
   });
@@ -232,14 +281,21 @@
     const overlay = $('#overlay-cuenta');
     function tick() {
       const restante = horaInicio - Date.now();
-      if (restante <= 0) { overlay.classList.add('oculto'); comenzarCarreraLocal(); return; }
+      if (restante <= 0) {
+        overlay.classList.add('oculto');
+        if (estado.rol === 'jugador') comenzarCarreraJugador(); else comenzarCarreraEspectador();
+        return;
+      }
       overlay.textContent = String(Math.ceil(restante / 1000));
       requestAnimationFrame(tick);
     }
     tick();
   }
 
-  function comenzarCarreraLocal() {
+  /* ==================================================================
+     8A. BUCLE DEL JUGADOR (física, preguntas, power-ups — sin 3D)
+     ================================================================== */
+  function comenzarCarreraJugador() {
     estado.miX = 0;
     estado.miVelocidad = VELOCIDAD_BASE;
     estado.miEstadoMoto = 'normal';
@@ -261,35 +317,20 @@
       window.Red.enviarPosicion(Math.round(estado.miX * 10) / 10, estado.miEstadoMoto);
     }, INTERVALO_PUBLICACION_POS);
 
-    requestAnimationFrame(bucleJuego);
+    requestAnimationFrame(bucleJugador);
   }
 
-  /* ==================================================================
-     8. BUCLE DE JUEGO
-     ================================================================== */
-  function bucleJuego(marcaTiempo) {
+  function bucleJugador(marcaTiempo) {
     if (!estado.corriendo) return;
-    // dt limitado a 100ms: si la pestaña estuvo en segundo plano y el
-    // rAF se reanuda tras un salto grande, evita un "teletransporte" físico.
     const dt = estado.ultimoFrame ? Math.min((marcaTiempo - estado.ultimoFrame) / 1000, 0.1) : 0;
     estado.ultimoFrame = marcaTiempo;
 
     actualizarFisicaLocal(dt);
-    actualizarInterpolacionRemota();
+    actualizarInterpolacionRemota(); // para el indicador "Pos X/6"
     actualizarHUD();
+    actualizarPanelJugador();
 
-    window.Juego3D.actualizarFrame({
-      miId: estado.jugadorId,
-      miProgreso: estado.miX,
-      miCarril: estado.carril,
-      miEstadoMoto: estado.miEstadoMoto,
-      remotos: Array.from(estado.jugadores.values())
-        .filter((j) => j.id !== estado.jugadorId)
-        .map((j) => ({ id: j.id, xRender: j.xRender || 0, carril: j.carril, estadoMoto: j.estadoMoto || 'normal' })),
-      dt,
-    });
-
-    requestAnimationFrame(bucleJuego);
+    requestAnimationFrame(bucleJugador);
   }
 
   function actualizarFisicaLocal(dt) {
@@ -324,7 +365,6 @@
       if (Math.abs(estado.miX - p.x) <= 0.6) {
         p.recogido = true;
         aplicarPowerup(p.tipo);
-        window.Juego3D.marcarPickupRecogido(p.id);
         window.Red.enviarItemRecogido(p.id);
         window.Red.enviarEvento('powerup', { powerTipo: p.tipo, nombre: estado.nombre });
         const info = window.POWERUPS.TIPOS[p.tipo];
@@ -333,8 +373,25 @@
     }
   }
 
+  function actualizarPanelJugador() {
+    const pct = Math.min(100, (estado.miX / LONGITUD_PISTA) * 100);
+    const barra = $('#jugador-barra-relleno');
+    if (barra) barra.style.width = pct + '%';
+
+    const icono = $('#jugador-icono');
+    const texto = $('#jugador-estado-texto');
+    if (!icono || !texto) return;
+    icono.textContent = iconoEstado(estado.miEstadoMoto);
+    texto.textContent = {
+      pregunta: '¡Responde la pregunta!',
+      turbo: '¡TURBO!',
+      choque: 'Recuperándote…',
+      meta: '¡Has llegado a la meta!',
+    }[estado.miEstadoMoto] || '¡Avanzando!';
+  }
+
   /* ==================================================================
-     9. POWER-UPS
+     9. POWER-UPS (jugador)
      ================================================================== */
   function aplicarPowerup(tipo) {
     if (tipo === 'rayo') {
@@ -353,12 +410,13 @@
   }
 
   function actualizarIndicadoresPowerup() {
-    $('#hud-escudo').classList.toggle('oculto', !estado.tengoEscudo);
-    $('#hud-comodin').classList.toggle('oculto', !estado.tengoComodin);
+    const escudo = $('#hud-escudo'), comodin = $('#hud-comodin');
+    if (escudo) escudo.classList.toggle('oculto', !estado.tengoEscudo);
+    if (comodin) comodin.classList.toggle('oculto', !estado.tengoComodin);
   }
 
   /* ==================================================================
-     10. MODO PREGUNTA
+     10. MODO PREGUNTA (jugador)
      ================================================================== */
   function activarModoPregunta() {
     estado.miEstadoMoto = 'pregunta';
@@ -445,12 +503,12 @@
     estado.miVelocidad = 0;
     estado.tiempoChoqueRestante = cfg.penalizacionSegundos * 1000;
     mostrarFlash('¡CHOQUE!', 'var(--color-choque)');
-    window.Juego3D.efectoChoque(estado.jugadorId);
     window.Red.enviarEvento('choque', { nombre: estado.nombre });
   }
 
   function mostrarFlash(texto, color) {
     const el = $('#flash');
+    if (!el) return;
     el.textContent = texto;
     el.style.color = color;
     el.classList.remove('oculto');
@@ -459,7 +517,7 @@
   }
 
   /* ==================================================================
-     11. LLEGADA A META Y RESULTADOS
+     11. LLEGADA A META Y RESULTADOS (jugador registra, ambos los ven)
      ================================================================== */
   function manejarLlegadaPropia() {
     estado.miLlegue = true;
@@ -494,8 +552,84 @@
       </li>`).join('');
   }
 
+  function comprobarTodosTerminaron() {
+    if (estado.rol !== 'espectador' || !estado.corriendo) return;
+    if (estado.jugadores.size > 0 && estado.resultados.length >= estado.jugadores.size) {
+      setTimeout(() => {
+        estado.corriendo = false;
+        renderResultadosUI();
+        mostrarPantalla('resultados');
+      }, 2500);
+    }
+  }
+
   /* ==================================================================
-     12. EVENTOS DE RED (jugadores remotos)
+     8B. BUCLE DEL ESPECTADOR (sigue al líder, dibuja el 3D)
+     ================================================================== */
+  function comenzarCarreraEspectador() {
+    estado.tiempoInicio = performance.now();
+    estado.ultimoFrame = 0;
+    estado.corriendo = true;
+    estado.enCuentaRegresiva = false;
+    requestAnimationFrame(bucleEspectador);
+  }
+
+  function calcularLiderId() {
+    let mejorId = null, mejorX = -Infinity;
+    for (const [id, j] of estado.jugadores) {
+      const x = j.xRender || 0;
+      if (x > mejorX) { mejorX = x; mejorId = id; }
+    }
+    return mejorId;
+  }
+
+  function bucleEspectador(marcaTiempo) {
+    if (!estado.corriendo) return;
+    const dt = estado.ultimoFrame ? Math.min((marcaTiempo - estado.ultimoFrame) / 1000, 0.1) : 0;
+    estado.ultimoFrame = marcaTiempo;
+
+    actualizarInterpolacionRemota(); // aquí interpola a TODOS: no hay "yo" local
+
+    const liderId = calcularLiderId();
+    const lider = estado.jugadores.get(liderId);
+    if (lider) {
+      window.Juego3D.actualizarFrame({
+        miId: liderId,
+        miProgreso: lider.xRender || 0,
+        miCarril: lider.carril,
+        miEstadoMoto: lider.estadoMoto || 'normal',
+        remotos: Array.from(estado.jugadores.values())
+          .filter((j) => j.id !== liderId)
+          .map((j) => ({ id: j.id, xRender: j.xRender || 0, carril: j.carril, estadoMoto: j.estadoMoto || 'normal' })),
+        dt,
+      });
+    }
+
+    if (marcaTiempo - estado.ultimaActualizacionUIEspectador > 200) {
+      estado.ultimaActualizacionUIEspectador = marcaTiempo;
+      actualizarHUDEspectador();
+      actualizarLeaderboardEspectador();
+    }
+
+    requestAnimationFrame(bucleEspectador);
+  }
+
+  function actualizarHUDEspectador() {
+    $('#hud-sala').textContent = estado.sala || '------';
+    $('#hud-tiempo').textContent = formatearReloj((performance.now() - estado.tiempoInicio) / 1000);
+  }
+
+  function actualizarLeaderboardEspectador() {
+    const ol = $('#leaderboard-espectador');
+    if (!ol) return;
+    const ordenados = Array.from(estado.jugadores.values()).sort((a, b) => (b.xRender || 0) - (a.xRender || 0));
+    ol.innerHTML = ordenados.map((j, i) => `
+      <li><span class="lb-puesto">${i + 1}º</span><span class="lb-icono">${iconoEstado(j.estadoMoto)}</span><span>${escaparHtml(j.nombre)}</span></li>
+    `).join('');
+  }
+
+  /* ==================================================================
+     12. EVENTOS DE RED
      ================================================================== */
   window.Red.on('pos', (datos) => {
     const j = estado.jugadores.get(datos.id);
@@ -506,12 +640,14 @@
   });
 
   window.Red.on('evento', (datos) => {
-    if (!datos || datos.id === estado.jugadorId) return;
+    if (!datos) return;
+    if (estado.rol === 'jugador' && datos.id === estado.jugadorId) return;
+
     if (datos.tipo === 'turbo') {
       agregarEventoTicker(`⚡ ${datos.nombre} activó TURBO`);
     } else if (datos.tipo === 'choque') {
       agregarEventoTicker(`💥 ${datos.nombre} chocó`);
-      window.Juego3D.efectoChoque(datos.id);
+      if (estado.rol === 'espectador') window.Juego3D.efectoChoque(datos.id);
     } else if (datos.tipo === 'powerup') {
       const info = window.POWERUPS.TIPOS[datos.powerTipo];
       agregarEventoTicker(`${info.emoji} ${datos.nombre} recogió ${info.nombre}`);
@@ -520,14 +656,23 @@
     } else if (datos.tipo === 'meta') {
       agregarEventoTicker(`🏁 ${datos.nombre} llegó a la meta`);
       registrarResultado(datos.id, datos.nombre, datos.nivel, datos.tiempoMs);
+      comprobarTodosTerminaron();
     }
   });
 
   window.Red.on('item_recogido', ({ idItem, jugadorId }) => {
-    if (jugadorId === estado.jugadorId) return;
+    if (estado.rol === 'jugador' && jugadorId === estado.jugadorId) return;
     const p = estado.pickups.find((x) => x.id === idItem);
     if (p) p.recogido = true;
-    window.Juego3D.marcarPickupRecogido(idItem);
+    if (estado.rol === 'espectador') window.Juego3D.marcarPickupRecogido(idItem);
+  });
+
+  window.Red.on('anfitrion_desconectado', () => {
+    if (estado.rol !== 'jugador') return;
+    const aviso = $('#aviso-anfitrion-perdido');
+    if (!aviso) return;
+    aviso.classList.remove('oculto');
+    setTimeout(() => aviso.classList.add('oculto'), 6000);
   });
 
   window.Red.on('conexion', actualizarEstadoConexionUI);
@@ -535,8 +680,8 @@
   function actualizarInterpolacionRemota() {
     const ahora = Date.now();
     for (const [id, j] of estado.jugadores) {
-      if (id === estado.jugadorId) { j.xRender = estado.miX; continue; }
-      if (!j.tAct) { j.xRender = 0; continue; }
+      if (estado.rol === 'jugador' && id === estado.jugadorId) { j.xRender = estado.miX; continue; }
+      if (!j.tAct) { j.xRender = j.xRender || 0; continue; }
       const dtMuestras = j.tAct - j.tAnt;
       const velocidad = dtMuestras > 0 ? (j.xAct - j.xAnt) / dtMuestras : 0;
       const extrapMs = Math.min(Math.max(ahora - j.tAct, 0), 400);
@@ -545,7 +690,7 @@
   }
 
   /* ==================================================================
-     13. HUD
+     13. HUD (jugador)
      ================================================================== */
   function actualizarHUD() {
     $('#hud-sala').textContent = estado.sala || '------';
@@ -563,7 +708,20 @@
   }
 
   /* ==================================================================
-     14. NAVEGACIÓN Y ARRANQUE
+     14. TICKER DE EVENTOS
+     ================================================================== */
+  function agregarEventoTicker(texto) {
+    const ul = $('#ticker-eventos');
+    if (!ul) return;
+    const li = document.createElement('li');
+    li.textContent = texto;
+    ul.appendChild(li);
+    while (ul.children.length > 4) ul.removeChild(ul.firstChild);
+    setTimeout(() => { if (li.parentNode) li.parentNode.removeChild(li); }, 6000);
+  }
+
+  /* ==================================================================
+     15. NAVEGACIÓN Y ARRANQUE
      ================================================================== */
   function mostrarPantalla(nombre) {
     document.querySelectorAll('.pantalla').forEach((el) => el.classList.remove('pantalla--activa'));
@@ -591,7 +749,9 @@
   }
 
   function inicializarEventosUI() {
-    $('#btn-crear-sala').addEventListener('click', crearSala);
+    $('#btn-rol-profesor').addEventListener('click', elegirRolProfesor);
+    $('#btn-rol-alumno').addEventListener('click', elegirRolAlumno);
+    $('#btn-volver-eleccion').addEventListener('click', volverEleccion);
     $('#btn-unirse-sala').addEventListener('click', unirseSala);
     $('#btn-iniciar-carrera').addEventListener('click', iniciarCarrera);
     $('#btn-salir-espera').addEventListener('click', salirYReiniciar);
@@ -604,7 +764,8 @@
     });
     window.addEventListener('pagehide', () => window.Red.desconectar());
 
-    window.Red.conectar(); // conecta pronto para mostrar el estado real en el lobby
+    comprobarParametroSala();
+    window.Red.conectar();
   }
 
   document.addEventListener('DOMContentLoaded', inicializarEventosUI);

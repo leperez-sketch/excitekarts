@@ -36,13 +36,16 @@ window.Red = (function () {
     socket.on('pos', (datos) => emitirLocal('pos', datos));
     socket.on('evento', (datos) => emitirLocal('evento', datos));
     socket.on('item_recogido', (datos) => emitirLocal('item_recogido', datos));
+    socket.on('anfitrion_desconectado', () => emitirLocal('anfitrion_desconectado'));
 
     return socket;
   }
 
-  function crearSala(nombre, nivel) {
+  // El anfitrión (pantalla grande) crea la sala; no necesita nombre ni
+  // nivel, nunca ocupa un carril.
+  function crearSala() {
     return new Promise((resolve, reject) => {
-      conectar().emit('crear_sala', { nombre, nivel }, (resp) => {
+      conectar().emit('crear_sala', {}, (resp) => {
         if (resp && resp.ok) resolve(resp); else reject(new Error((resp && resp.error) || 'Error al crear la sala.'));
       });
     });
