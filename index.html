@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+  <title>ExciteBike EFL 3D · Carrera de verbos</title>
+  <meta name="description" content="Carrera multijugador en 3D low-poly para practicar verbos en inglés, jugada desde el móvil en clase.">
+  <meta name="theme-color" content="#0B0E1A">
+  <link rel="icon" href="data:,">
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@600;800&family=Rajdhani:wght@500;600;700&display=swap" rel="stylesheet">
+
+  <link rel="stylesheet" href="css/style.css">
+
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://cdn.jsdelivr.net/npm/three@0.184.0/build/three.module.js",
+      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.184.0/examples/jsm/"
+    }
+  }
+  </script>
+</head>
+<body>
+
+  <div id="overlay-rotar" class="overlay-rotar" aria-hidden="true">
+    <div class="overlay-rotar__icono" aria-hidden="true">&#128241;</div>
+    <p class="overlay-rotar__texto">Gira tu teléfono<br>para jugar</p>
+  </div>
+
+  <div id="app" class="app">
+
+    <!-- ============ PANTALLA 1 · LOBBY ============ -->
+    <section id="pantalla-lobby" class="pantalla pantalla--activa" data-pantalla="lobby">
+      <header class="lobby__cabecera">
+        <h1 class="titulo-juego">EXCITE<span>BIKE</span><small>EFL · 3D</small></h1>
+        <p class="subtitulo">Carrera de verbos en inglés</p>
+      </header>
+
+      <div class="tarjeta-lobby">
+
+        <!-- Paso 1: elegir rol -->
+        <div id="eleccion-rol" class="eleccion-rol">
+          <button type="button" id="btn-rol-profesor" class="tarjeta-rol">
+            <span class="tarjeta-rol__icono" aria-hidden="true">📺</span>
+            <span class="tarjeta-rol__titulo">Soy el profesor/a</span>
+            <span class="tarjeta-rol__detalle">Crea la sala y proyecta esta pantalla</span>
+          </button>
+          <button type="button" id="btn-rol-alumno" class="tarjeta-rol">
+            <span class="tarjeta-rol__icono" aria-hidden="true">📱</span>
+            <span class="tarjeta-rol__titulo">Soy alumno/a</span>
+            <span class="tarjeta-rol__detalle">Únete con el código desde tu móvil</span>
+          </button>
+        </div>
+
+        <!-- Paso 2 (alumno): nombre, nivel y código -->
+        <form id="form-alumno" class="form-alumno oculto" autocomplete="off">
+          <label class="campo">
+            <span class="campo__etiqueta">Tu nombre</span>
+            <input id="input-nombre" type="text" maxlength="16" placeholder="Ej: Ana" required>
+          </label>
+          <label class="campo">
+            <span class="campo__etiqueta">Tu nivel de inglés (MCER)</span>
+            <select id="select-nivel" required>
+              <option value="A1">A1 · Principiante</option>
+              <option value="A2">A2 · Básico</option>
+              <option value="B1" selected>B1 · Intermedio</option>
+              <option value="B2">B2 · Intermedio alto</option>
+              <option value="C1">C1 · Avanzado</option>
+            </select>
+          </label>
+          <label class="campo">
+            <span class="campo__etiqueta">Código de sala</span>
+            <input id="input-sala" type="text" maxlength="8" placeholder="Ej: ENG42" spellcheck="false">
+          </label>
+          <button type="button" id="btn-unirse-sala" class="boton boton--primario">Unirse a la carrera</button>
+          <button type="button" id="btn-volver-eleccion" class="boton boton--texto">&larr; Volver</button>
+        </form>
+
+        <p id="lobby-mensaje" class="lobby__mensaje" role="status" aria-live="polite"></p>
+      </div>
+
+      <p class="lobby__config">
+        Servidor: <span id="estado-conexion" class="estado-conexion estado-conexion--desconectado">Desconectado</span>
+      </p>
+    </section>
+
+    <!-- ============ PANTALLA 2 · SALA DE ESPERA ============ -->
+    <section id="pantalla-espera" class="pantalla" data-pantalla="espera">
+      <div class="sala-espera">
+        <p class="sala-espera__etiqueta">Código de sala</p>
+        <p id="codigo-sala-grande" class="sala-espera__codigo">------</p>
+
+        <div class="solo-espectador">
+          <div id="qr-contenedor" class="qr-contenedor"></div>
+          <p class="qr-instruccion">Escanea con el móvil para unirte</p>
+        </div>
+
+        <ul id="lista-jugadores" class="lista-jugadores" aria-live="polite"></ul>
+
+        <div class="solo-espectador">
+          <div class="barra-carga-contenedor" aria-label="Cargando gráficos 3D">
+            <div id="barra-carga-relleno" class="barra-carga-relleno"></div>
+          </div>
+          <p class="barra-carga-etiqueta">Cargando gráficos 3D…</p>
+          <button id="btn-iniciar-carrera" class="boton boton--primario">🏁 Iniciar carrera</button>
+        </div>
+
+        <p id="espera-mensaje" class="espera__mensaje solo-jugador">Esperando a que el profesor(a) inicie la carrera…</p>
+
+        <button type="button" id="btn-salir-espera" class="boton boton--texto">Salir de la sala</button>
+      </div>
+    </section>
+
+    <!-- ============ PANTALLA 3 · JUEGO ============ -->
+    <section id="pantalla-juego" class="pantalla" data-pantalla="juego">
+
+      <div class="hud">
+        <div class="hud__grupo">
+          <span class="hud__etiqueta">Sala</span>
+          <span id="hud-sala" class="hud__valor">------</span>
+        </div>
+        <div class="hud__grupo solo-jugador">
+          <span class="hud__etiqueta">Pos.</span>
+          <span id="hud-posicion" class="hud__valor">-/6</span>
+        </div>
+        <div class="hud__grupo">
+          <span class="hud__etiqueta">Tiempo</span>
+          <span id="hud-tiempo" class="hud__valor">00:00</span>
+        </div>
+
+        <div class="hud__powerups solo-jugador">
+          <span id="hud-escudo" class="hud__insignia-powerup oculto" title="Escudo listo">🛡️</span>
+          <span id="hud-comodin" class="hud__insignia-powerup oculto" title="Comodín 50/50 listo">🎯</span>
+        </div>
+
+        <div class="hud__grupo hud__grupo--nivel solo-jugador">
+          <span id="hud-nivel" class="hud__nivel">B1</span>
+        </div>
+      </div>
+
+      <div class="area-juego">
+        <!-- Solo el anfitrión (espectador) renderiza y ve la pista en 3D -->
+        <div class="lienzo-contenedor solo-espectador">
+          <canvas id="canvas-juego"></canvas>
+        </div>
+        <ol id="leaderboard-espectador" class="leaderboard-espectador solo-espectador"></ol>
+
+        <!-- Solo el alumno (jugador) ve este panel sencillo en su móvil -->
+        <div class="panel-jugador solo-jugador">
+          <div id="jugador-icono" class="jugador-icono">🏍️</div>
+          <p id="jugador-estado-texto" class="jugador-estado-texto">¡Prepárate!</p>
+          <div class="jugador-barra-contenedor"><div id="jugador-barra-relleno" class="jugador-barra-relleno"></div></div>
+        </div>
+
+        <div id="flash" class="flash oculto"></div>
+        <div id="overlay-cuenta" class="overlay-cuenta oculto">3</div>
+
+        <div id="overlay-meta" class="overlay-meta oculto solo-jugador">
+          <p class="overlay-meta__titulo">🏆 &#161;Meta!</p>
+          <p id="overlay-meta-detalle" class="overlay-meta__detalle"></p>
+          <button type="button" id="btn-ver-resultados" class="boton boton--primario">Ver resultados</button>
+        </div>
+
+        <div id="aviso-anfitrion-perdido" class="aviso-anfitrion oculto solo-jugador">
+          La pantalla del profesor/a se ha desconectado — tu carrera sigue, pero nadie la está proyectando.
+        </div>
+      </div>
+
+      <ul id="ticker-eventos" class="ticker-eventos" aria-live="off"></ul>
+
+      <!-- ============ MODO PREGUNTA (solo jugador) ============ -->
+      <div id="overlay-pregunta" class="overlay-pregunta oculto solo-jugador">
+        <div class="overlay-pregunta__panel">
+          <p class="overlay-pregunta__tema">
+            <span id="pregunta-tema">Tema</span>
+            <span id="pregunta-nivel-tag" class="etiqueta-nivel">B1</span>
+          </p>
+          <p id="pregunta-texto" class="overlay-pregunta__texto">Cargando pregunta…</p>
+          <div id="opciones-pregunta" class="opciones-pregunta"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ PANTALLA 4 · RESULTADOS ============ -->
+    <section id="pantalla-resultados" class="pantalla" data-pantalla="resultados">
+      <div class="resultados">
+        <h2 class="resultados__titulo">🏆 Resultados de la carrera</h2>
+        <ol id="lista-resultados" class="lista-resultados"></ol>
+        <button type="button" id="btn-volver-lobby" class="boton boton--primario">Volver al lobby</button>
+      </div>
+    </section>
+
+  </div>
+
+  <!-- Cliente de Socket.io servido por el propio servidor -->
+  <script src="/socket.io/socket.io.js" defer></script>
+  <!-- Generador de QR (para que el anfitrión muestre el código de sala) -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"
+    integrity="sha512-CNgIRecGo7nphbeZ04Sc13ka07paqdeTu0WR1IM4kNcpmBAUSHSQX0FslNhTDadL4O5SAGapGt4FodqL8My0mA=="
+    crossorigin="anonymous" referrerpolicy="no-referrer" defer></script>
+  <script src="js/semilla.js" defer></script>
+  <script src="js/powerups.js" defer></script>
+  <script src="js/paleta.js" defer></script>
+  <script src="js/red.js" defer></script>
+  <!-- Único módulo ES del proyecto -->
+  <script type="module" src="js/juego3d.js"></script>
+  <script src="js/main.js" defer></script>
+</body>
+</html>
