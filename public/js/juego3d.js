@@ -128,7 +128,7 @@ function inicializar(elementoCanvas) {
   renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
   renderer.shadowMap.enabled = true;
-  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  renderer.shadowMap.type = THREE.PCFShadowMap; // PCFSoftShadowMap quedó obsoleto en esta versión de three.js
   renderer.outputColorSpace = THREE.SRGBColorSpace;
 
   luzHemisferio = new THREE.HemisphereLight(0xbfe3ff, 0x3a2a1a, 1.0);
