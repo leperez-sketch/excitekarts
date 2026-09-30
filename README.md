@@ -1,179 +1,147 @@
-# 🏍️ ExciteBike EFL 3D — Carrera de verbos en inglés
+# 🏎️ ExciteBike EFL 3D — Carrera isométrica de verbos en inglés
 
 Carrera multijugador en tiempo real (hasta 6 jugadores) en 3D low-poly,
-inspirada en el Excitebike de NES, para practicar formas verbales en
-inglés (A1 a C1) desde el móvil en clase.
+con cámara isométrica fija al estilo "coche de radiocontrol" — circuitos
+cerrados de varias vueltas, selección de pista y de carrito, marcador de
+puntos, y sonido/música/voz generados en el propio navegador. Todo para
+practicar formas verbales en inglés (A1 a C1) desde el móvil en clase.
 
-- **Dos roles separados:** el profesor(a) crea la sala desde SU
-  pantalla (portátil + proyector) y esa es la ÚNICA pantalla que
-  descarga gráficos 3D y muestra la carrera, con un código QR para que
-  la clase se una. Cada alumno se une con el código desde su propio
-  móvil, que actúa solo como mando (nombre, nivel, y los botones de
-  las preguntas) — su móvil no descarga ni un byte de modelos 3D.
-- **Gráficos:** Three.js + modelos low-poly (karts y carretera), con la
-  paleta de color `variation-a.png` que subiste aplicada a los karts.
-- **Multijugador:** Node.js + Express + Socket.io (WebSockets). El
-  servidor gestiona las salas; cada móvil simula su propio kart y solo
-  publica su posición, así que la carrera va fluida aunque el servidor
-  gratuito tenga algo de latencia.
-- **Banco de preguntas:** 250 preguntas de gramática (50 por nivel MCER).
-- **Power-ups:** Rayo ⚡, Escudo 🛡️ y Comodín 50/50 🎯, repartidos por
-  la pista además de las preguntas de los obstáculos.
+## Qué hay en esta versión
+
+- **Circuitos cerrados de verdad**, no una recta: 3 pistas (Óvalo
+  Clásico, Curvas en Ese, Circuito Técnico) con curvas reales, 3 vueltas
+  por carrera. El profesor elige la pista antes de cada carrera.
+- **Cámara isométrica fija** (ortográfica, sin perspectiva): encuadra
+  todo el circuito de una vez, como un coche de radiocontrol visto
+  desde arriba — nunca sigue a nadie en particular.
+- **Cada alumno elige su carrito** (5 modelos distintos) antes de unirse.
+- **Dos roles separados**: el profesor crea la sala desde SU pantalla
+  (portátil + proyector) — esa es la ÚNICA pantalla que carga gráficos
+  3D, con un código QR para que la clase se una. Cada alumno juega desde
+  su móvil, que actúa solo como mando (nombre, nivel, carrito, y los
+  botones de las preguntas) — su móvil no descarga ni un byte de
+  modelos 3D.
+- **Marcador de puntos acumulado**: 10-8-6-4-2-1 según posición de
+  llegada, que se SUMA si juegan varias carreras seguidas en la misma
+  sala (botón "Nueva carrera": cambia de pista sin perder el marcador
+  ni a los jugadores).
+- **Sonido completo generado en el navegador** (sin archivos de audio):
+  efectos de motor/turbo/choque/power-ups con la Web Audio API, música
+  de fondo procedural, y la voz del conteo regresivo "3, 2, 1, ¡ya!"
+  con la Web Speech API del propio navegador.
+- **250 preguntas de gramática** (50 por nivel MCER), con obstáculos que
+  se vuelven a activar en cada vuelta — y power-ups (Rayo ⚡, Escudo 🛡️,
+  Comodín 50/50 🎯) que reaparecen solos a los 10 segundos de recogerse.
 
 ## Estructura del proyecto
 
 ```
 excitebike-efl-3d/
 ├── package.json
-├── render.yaml            # despliegue con un clic en Render (opcional)
+├── render.yaml
 ├── server/
-│   └── server.js          # Express + Socket.io: salas, roster, relé de eventos
-└── public/                # todo lo que se sirve al navegador
+│   └── server.js          # Express + Socket.io: salas, roster, pista elegida, relé
+└── public/
     ├── index.html
     ├── css/style.css
     ├── js/
-    │   ├── semilla.js      # generador aleatorio determinista (trazado/power-ups)
-    │   ├── preguntas.js     # banco de 250 preguntas
-    │   ├── powerups.js       # tipos de power-up y dónde aparecen
-    │   ├── paleta.js          # recolorea los karts a partir de variation-a.png
-    │   ├── red.js              # cliente de Socket.io
-    │   ├── juego3d.js           # escena Three.js (único módulo ES del proyecto)
-    │   └── main.js               # física, preguntas, power-ups, marcador
+    │   ├── semilla.js      # generador aleatorio determinista (solo para decoración)
+    │   ├── preguntas.js      # banco de 250 preguntas
+    │   ├── powerups.js        # metadatos de los 3 power-ups
+    │   ├── pistas.js            # los 3 circuitos + toda la matemática de la ruta
+    │   ├── paleta.js              # recolorea los karts a partir de variation-a.png
+    │   ├── audio.js                 # efectos, música y voz (Web Audio / Web Speech)
+    │   ├── red.js                     # cliente de Socket.io
+    │   ├── juego3d.js                   # escena Three.js (único módulo ES)
+    │   └── main.js                        # física, vueltas, preguntas, puntos, red
     └── assets/models/
-        ├── roads/          # pista, barreras, obstáculos, decoración (Kenney)
+        ├── roads/          # recta, curva, obstáculos, decoración (Kenney)
         └── karts/          # 5 karts + restos de choque, con tu paleta aplicada
 ```
 
-## Probarlo en tu ordenador
+## Probarlo / desplegarlo
 
-```bash
-npm install
-npm start
-```
+Igual que antes — `npm install && npm start` en local, y en Render:
+Build Command `npm install`, Start Command `node server/server.js`
+(o Blueprint con `render.yaml`). Todos los detalles de despliegue en
+GitHub/Render que ya conoces siguen siendo los mismos; no ha cambiado
+nada de esa parte.
 
-Abre `http://localhost:3000`. Abre una segunda pestaña (o usa el móvil
-en la misma wifi con la IP de tu ordenador) para probar el multijugador.
+## Cómo se juega ahora
 
-## Subir a GitHub
-
-```bash
-git init
-git add .
-git commit -m "ExciteBike EFL 3D"
-git branch -M main
-git remote add origin https://github.com/TU-USUARIO/TU-REPO.git
-git push -u origin main
-```
-
-`node_modules/` no se sube (está en `.gitignore`); Render lo instala
-solo con `npm install` al desplegar.
-
-## Desplegar en Render (gratis)
-
-**Opción A — Blueprint (un clic):**
-En Render → **New +** → **Blueprint** → conecta tu repositorio → Render
-lee `render.yaml` y lo configura solo → **Apply**.
-
-**Opción B — Manual:**
-Render → **New +** → **Web Service** → conecta el repositorio →
-
-| Campo | Valor |
-|---|---|
-| Runtime | Node |
-| Build Command | `npm install` |
-| Start Command | `node server/server.js` |
-| Plan | Free |
-
-En unos minutos tendrás una URL tipo `https://tu-juego.onrender.com`
-— ese es el enlace que compartes con la clase.
-
-> ⚠️ **El plan gratuito de Render "duerme" el servidor tras un rato sin
-> uso.** El primer acceso tras la inactividad puede tardar 30-60s en
-> despertar. Truco para clase: abre el enlace tú 5 minutos antes de
-> empezar, así ya está despierto cuando lleguen los alumnos.
-
-## Cómo se juega
-
-1. El profesor(a) abre el enlace en su portátil/proyector, elige
-   **📺 Soy el profesor/a** → aparece un código corto (ej. `ENG42`) y
-   un **QR** en pantalla grande. Esa pantalla NO se juega: es la
-   pantalla de la clase.
-2. Cada alumno abre el enlace en su móvil (escaneando el QR, que le
-   rellena el código automáticamente, o escribiéndolo a mano), elige
-   **📱 Soy alumno/a**, pone su nombre y nivel — hasta 6 por sala, cada
-   uno en su carril.
-3. El profesor(a) ve el botón **🏁 Iniciar carrera** en cuanto quiera
-   (no hace falta esperar a los 6); al pulsarlo, todos arrancan a la
-   vez tras una cuenta atrás sincronizada.
-4. Las 6 motos avanzan solas. Al llegar a un cono/señal de obra, el
-   juego pausa SOLO el móvil de ese alumno y lanza una pregunta de
-   opción múltiple de su nivel: acertar = turbo 🔥, fallar = choque y
-   pierde segundos. Mientras tanto, la pantalla grande muestra la
-   carrera en 3D siguiendo a quien va en cabeza en cada momento, con
-   un marcador en vivo de las 6 posiciones.
-5. Por la pista también hay power-ups flotantes: **Rayo** (turbo
-   gratis), **Escudo** (perdona el próximo choque) y **Comodín 50/50**
-   (quita 2 opciones incorrectas en la próxima pregunta).
-6. Gana quien primero llega a la meta; en cuanto todos terminan, la
-   pantalla grande pasa sola a los resultados.
+1. El profesor(a) elige **📺 Soy el profesor/a** → aparece el código y
+   el QR. En la sala de espera elige una de las 3 pistas (se puede
+   cambiar hasta el último momento).
+2. Cada alumno escanea el QR o escribe el código, pone su nombre,
+   nivel, y **elige su carrito** entre 5 modelos.
+3. El profesor pulsa **🏁 Iniciar carrera** → cuenta atrás con voz
+   "3, 2, 1, ¡ya!" sincronizada para todos.
+4. Cada kart da **3 vueltas** al circuito elegido. Los conos/señales de
+   obra lanzan una pregunta nueva CADA VEZ que se pasa por ellos (una
+   vez por vuelta); acertar da turbo, fallar hace perder segundos. Los
+   power-ups flotantes se recogen y reaparecen solos a los 10s.
+5. Al llegar los 6 (o los que haya), la pantalla del profesor pasa sola
+   a los resultados: posiciones de esta carrera + el marcador de puntos
+   acumulado. Desde ahí, **🔁 Nueva carrera** deja elegir otra pista sin
+   perder a nadie ni el marcador.
 
 ## Decisiones técnicas (por si tocas el código)
 
-- **Anfitrión y jugadores son roles separados de verdad**, no solo una
-  etiqueta: quien crea la sala (`crear_sala`) nunca ocupa un carril ni
-  corre — es el único socket con permiso para `iniciar_carrera`
-  (comprobado en el servidor, no solo escondiendo el botón en el
-  cliente). Esto simplifica mucho respecto a "el jugador con el carril
-  más bajo es el host": ahora el host siempre es quien creó la sala.
-- **Solo el anfitrión carga Three.js y los modelos GLB.** El móvil de
-  cada alumno (`main.js`, rol `'jugador'`) nunca llama a `Juego3D`:
-  corre su física y sus preguntas igual que antes, pero pinta un panel
-  de texto/icono en vez de un `<canvas>` 3D. Menos descarga, menos
-  batería, menos cosas que puedan fallar en un móvil de gama baja.
-- **Bug ya corregido, por si lo ves en un fork antiguo:** `Three.js`
-  fija el tamaño de su lienzo de dibujo (no solo el CSS) la primera vez
-  que se inicializa. Si eso pasa mientras la pantalla del juego todavía
-  tiene `display:none` (p. ej. inicializar el renderer nada más entrar
-  en la sala de espera, para "adelantar trabajo"), `canvas.clientWidth`
-  vale 0 y el render se queda fijado a un buffer de 1×1 píxel estirado
-  a toda la pantalla — se ve como un color sólido fijo y nada se mueve.
-  Por eso `Juego3D.inicializar()` se llama justo DESPUÉS de mostrar la
-  pantalla de juego (`main.js`, manejador de `carrera_iniciando`), no
-  antes; la carga de los modelos (`cargarAssets`, que no necesita el
-  `<canvas>`) sí se adelanta a la sala de espera para ir más rápido.
-- **Cada jugador simula su propia física** y solo publica posición y
-  estado; el servidor no mueve a nadie, solo retransmite. Así un pico
-  de latencia del servidor gratuito no se nota como "teletransporte".
-- **El trazado y los power-ups no viajan por la red**: se generan con
-  un pseudoaleatorio sembrado con el código de sala (`semilla.js`), así
-  que todos los dispositivos calculan exactamente el mismo mapa sin
-  gastar ancho de banda en ello — incluida la pantalla del profesor,
-  que así sabe dónde están los conos y los power-ups sin que nadie se
-  lo diga por red.
-- **La pantalla del profesor sigue a quien va en cabeza**: cada frame
-  recalcula quién tiene más metros recorridos y usa esa posición como
-  "cámara local" (reutilizando exactamente la misma función de dibujo
-  que antes usaba la posición del propio jugador).
-- **Los karts se recolorean en el navegador**: solo subiste una paleta
-  (`variation-a.png`), así que `paleta.js` rota su tono 6 veces (0°,
-  60°, 120°...) para dar un color distinto a cada carril a partir de
-  esa misma imagen — el carril 0 usa tu paleta tal cual la subiste.
-- **La carretera y las barreras usan `THREE.InstancedMesh`** (una sola
-  llamada de dibujo para cientos de piezas) y solo se generan los
-  tramos cercanos a la cámara, reciclándose como en un "endless
-  runner" — necesario para que la pantalla del profesor vaya fluida
-  con sombras activadas mientras seis móviles le mandan posiciones.
+- **La pista se define por esquinas, no por giros a mano.**
+  `pistas.js` convierte una lista simple de esquinas de un polígono en
+  la secuencia de tiles recta/curva automáticamente — inventar la
+  secuencia de giros a mano es muy fácil de hacer mal (me pasó durante
+  el desarrollo: lo detecté y corregí probando la lógica en Node antes
+  de tocar Three.js, sin necesitar navegador para esa parte).
+- **El movimiento por las curvas es un arco real**, no una diagonal:
+  cada curva se recorre como un cuarto de círculo que conecta
+  exactamente el borde de entrada con el de salida del tile. Esa misma
+  función (`progresoAPosicion`) decide dónde va el kart Y dónde van los
+  bordillos rojo/blanco, así que ambos coinciden siempre por
+  construcción, no por casualidad.
+- **Los bordillos son geometría propia, no el modelo de barrera de
+  Kenney.** No hay forma de comprobar sin verlo renderizado con qué
+  rotación exacta se modeló esa pieza; en vez de arriesgarme, genero
+  los bordillos con cajas simples usando mi propia matemática de ruta
+  (ya verificada), así quedan pegados a la pista siempre.
+- **Las piezas de curva (`road-bend.glb`) sí se usan para el asfalto**,
+  con un mapa de rotación/espejo que es mi mejor estimación (rotar un
+  modelo nunca cambia su "lateralidad", así que los giros a la
+  izquierda usan la pieza espejada en vez de adivinar mal una rotación
+  para todos). Si alguna curva se ve desalineada, el mapa a tocar es
+  `PARES_CW`/`PARES_CCW` en `juego3d.js`.
+- **La cámara ortográfica se calcula una vez por pista** a partir del
+  rectángulo que ocupa el circuito, con margen generoso — no hay forma
+  de reajustarla a ojo sin navegador, así que preferí dejar pista de
+  más a arriesgarme a recortarla.
+- **Los power-ups reaparecen por temporizador (10s), no por vuelta.**
+  Con varios jugadores en vueltas distintas a la vez, sincronizar
+  "reaparece en la vuelta 2 de cada uno" es mucho más frágil que un
+  simple `setTimeout` en cada cliente — la pequeña falta de sincronía
+  exacta entre pantallas es un precio aceptable por la robustez.
+- **Solo la pantalla del profesor carga Three.js.** El móvil del
+  alumno corre exactamente la misma física (vueltas, preguntas,
+  power-ups) pero nunca llama a `Juego3D` — pinta un panel de texto en
+  vez de un `<canvas>` 3D.
+- **El audio se activa en el primer clic real** (elegir rol), porque
+  los navegadores bloquean el sonido hasta que hay una interacción del
+  usuario — no hay forma de saltarse eso.
 
-## Cosas a revisar tú (no las puedo probar sin navegador)
+## Cosas a revisar tú (no las puedo comprobar sin navegador)
 
-- **Orientación del asfalto**: si las líneas de la carretera se ven
-  giradas 90°, cambia `ROTACION_TILE_CARRETERA` en `juego3d.js` (línea
-  ~33) de `0` a `Math.PI/2`.
-- **Orientación de las barreras del borde**: mismo archivo,
-  `ROTACION_BARRERA_IZQ` / `ROTACION_BARRERA_DER`.
-- **Duración total de la carrera**: `LONGITUD_PISTA` y `VELOCIDAD_BASE`
-  en `main.js` (por defecto, ~400 m a 10 m/s ≈ 40s de conducción pura,
-  más el tiempo de las 5 preguntas).
+- **Si alguna curva del asfalto se ve girada/espejada al revés**: es
+  el mapa `PARES_CW`/`PARES_CCW` en `juego3d.js` (sección 3) — sumar o
+  restar 90° al par que falle suele arreglarlo.
+- **Encuadre de la cámara**: si algún circuito se ve muy alejado o algo
+  recortado, el número a tocar es `CAMARA_MARGEN` y el `0.72` dentro de
+  `configurarCamara()` en `juego3d.js`.
+- **Volumen y tono de los efectos/música**: están para que se noten
+  sin ser molestos en una clase, pero el gusto es subjetivo — todos los
+  volúmenes están como números sueltos y fáciles de bajar en `audio.js`.
+- **Voz del conteo regresivo**: usa la voz en español que el propio
+  navegador/dispositivo tenga instalada; la calidad varía bastante
+  entre Android, iPhone y ordenador — es la Web Speech API del sistema,
+  no algo que yo pueda afinar desde aquí.
 
 ## Licencia de los modelos 3D
 
@@ -185,13 +153,11 @@ fuente original y añade el crédito/licencia correspondiente si aplica.
 
 ## Próximos pasos posibles
 
-- **Reconexión del anfitrión**: si la pantalla del profesor se
-  recarga a mitad de carrera, hoy los alumnos siguen jugando pero
-  nadie proyecta nada (se avisa con un mensaje en su móvil). Se podría
-  guardar el estado de la sala y dejar que la misma pantalla vuelva a
-  "engancharse" con el código.
 - Un power-up de "aceite" que ralentice a otros jugadores al pasar por
-  encima (lo dejé fuera de esta versión para no arriesgar estabilidad,
-  pero la arquitectura de eventos ya lo soportaría sin muchos cambios).
-- Guardar resultados históricos (requeriría una base de datos; Render
-  ofrece Postgres gratuito si se quiere ir por ahí).
+  encima (la arquitectura de eventos ya lo soportaría).
+- Reconexión de la pantalla del profesor si se recarga a mitad de
+  carrera (hoy los alumnos siguen jugando, pero nadie proyecta nada
+  hasta que el profesor vuelve a crear sala).
+- Más pistas: cada una es solo una lista de esquinas + un par de
+  índices de obstáculos/power-ups en `pistas.js`, no hace falta tocar
+  nada de la lógica para añadir una cuarta o quinta.

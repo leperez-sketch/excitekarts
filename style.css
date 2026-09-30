@@ -154,6 +154,17 @@
 
   .form-alumno { display: flex; flex-direction: column; gap: 16px; }
 
+  .selector-kart { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; }
+  .kart-opcion {
+    display: flex; flex-direction: column; align-items: center; gap: 2px;
+    background: var(--color-fondo); border: 1.5px solid var(--color-borde); border-radius: var(--radio-chico);
+    padding: 8px 4px; transition: border-color 120ms ease, transform 90ms ease;
+  }
+  .kart-opcion:active { transform: scale(0.96); }
+  .kart-opcion--activa { border-color: var(--color-primario); box-shadow: 0 0 0 2px rgba(34,211,238,0.3); }
+  .kart-opcion__emoji { font-size: 1.5rem; }
+  .kart-opcion__nombre { font-size: 0.75rem; color: var(--color-texto-tenue); }
+
   .lobby__acciones { display: flex; flex-direction: column; gap: 10px; margin-top: 4px; }
 
   .lobby__mensaje { min-height: 1.3em; font-size: 1rem; font-weight: 600; text-align: center; }
@@ -224,6 +235,18 @@
   }
   .qr-instruccion { font-size: 0.95rem; color: var(--color-texto-tenue); margin-bottom: 16px; }
 
+  .selector-pistas__etiqueta { font-family: var(--fuente-display); font-size: 0.65rem; color: var(--color-texto-tenue); margin-bottom: 8px; }
+  .selector-pistas { display: flex; flex-direction: column; gap: 8px; margin-bottom: 16px; }
+  .pista-opcion {
+    display: flex; align-items: center; gap: 10px; text-align: left;
+    background: var(--color-panel); border: 1.5px solid var(--color-borde); border-radius: var(--radio-chico);
+    padding: 10px 14px; transition: border-color 120ms ease;
+  }
+  .pista-opcion--activa { border-color: var(--color-primario); box-shadow: 0 0 0 2px rgba(34,211,238,0.25); }
+  .pista-opcion__emoji { font-size: 1.6rem; }
+  .pista-opcion__nombre { font-weight: 700; flex: 1; }
+  .pista-opcion__detalle { font-size: 0.8rem; color: var(--color-texto-tenue); }
+
   .barra-carga-contenedor { width: 100%; height: 8px; border-radius: 4px; background: var(--color-panel-alto); overflow: hidden; margin-top: 6px; }
   .barra-carga-relleno { height: 100%; width: 0%; background: linear-gradient(90deg, var(--color-primario), var(--color-comodin)); transition: width 160ms ease; }
   .barra-carga-etiqueta { font-size: 0.85rem; color: var(--color-texto-tenue); margin: 6px 0 16px; }
@@ -256,6 +279,12 @@
   .hud__nivel {
     font-family: var(--fuente-display); font-size: 0.75rem; font-weight: 800;
     background: var(--color-turbo); color: #201400; padding: 6px 10px; border-radius: var(--radio-chico);
+  }
+
+  .hud__mute {
+    margin-left: 8px; font-size: 1.1rem; background: var(--color-panel-alto);
+    border: 1px solid var(--color-borde); border-radius: 50%;
+    width: 34px; height: 34px; display: flex; align-items: center; justify-content: center;
   }
 
   /* --- Panel del jugador (móvil-mando, sin canvas 3D) --- */
@@ -319,6 +348,16 @@
   }
   .lista-resultados__puesto { font-family: var(--fuente-display); font-size: 0.8rem; color: var(--color-turbo); width: 2.2em; flex-shrink: 0; }
   .lista-resultados__tiempo { margin-left: auto; color: var(--color-texto-tenue); font-size: 1.05rem; font-weight: 600; }
+
+  .resultados__subtitulo { font-family: var(--fuente-display); font-size: 0.75rem; color: var(--color-texto-tenue); margin: 4px 0 10px; }
+  .tabla-puntos { display: flex; flex-direction: column; gap: 6px; margin-bottom: 20px; }
+  .tabla-puntos li {
+    display: flex; justify-content: space-between; align-items: center;
+    background: var(--color-panel); border: 1px solid var(--color-borde); border-radius: var(--radio-chico);
+    padding: 8px 14px; font-size: 1.05rem; font-weight: 600;
+  }
+  .tabla-puntos__valor { font-family: var(--fuente-display); font-size: 0.85rem; color: var(--color-turbo); }
+  #btn-nueva-carrera { width: 100%; margin-bottom: 10px; }
 }
 
 /* ==================== OVERLAYS ==================== */

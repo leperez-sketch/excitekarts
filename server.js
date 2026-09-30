@@ -61,7 +61,7 @@ function siguienteCarrilLibre(sala) {
 
 function rosterPublico(sala) {
   return Array.from(sala.jugadores.entries())
-    .map(([id, j]) => ({ id, nombre: j.nombre, nivel: j.nivel, carril: j.carril }))
+    .map(([id, j]) => ({ id, nombre: j.nombre, nivel: j.nivel, formaKart: j.formaKart, carril: j.carril }))
     .sort((a, b) => a.carril - b.carril);
 }
 
@@ -85,7 +85,7 @@ io.on('connection', (socket) => {
   socket.on('crear_sala', (_datos, callback) => {
     if (typeof callback !== 'function') return;
     const codigo = generarCodigoSala();
-    const sala = { espectadorId: socket.id, jugadores: new Map(), estadoPartida: 'espera', horaInicio: null, ultimaActividad: Date.now() };
+    const sala = { espectadorId: socket.id, jugadores: new Map(), estadoPartida: 'espera', horaInicio: null, idPista: null, ultimaActividad: Date.now() };
     salas.set(codigo, sala);
 
     socket.join(codigo);
@@ -96,21 +96,21 @@ io.on('connection', (socket) => {
 
   // Un alumno: se une con el código, entra en un carril y juega desde
   // su móvil (sin gráficos 3D).
-  socket.on('unirse_sala', ({ codigo, nombre, nivel }, callback) => {
+  socket.on('unirse_sala', ({ codigo, nombre, nivel, formaKart }, callback) => {
     if (typeof callback !== 'function') return;
     const codigoLimpio = limpiarTexto(codigo, 8).toUpperCase();
     const sala = salas.get(codigoLimpio);
     if (!sala) return callback({ ok: false, error: 'Esa sala no existe (revisa el código).' });
-    if (sala.estadoPartida !== 'espera') return callback({ ok: false, error: 'Esa carrera ya ha empezado.' });
 
     const nombreLimpio = limpiarTexto(nombre, 16);
     if (!nombreLimpio) return callback({ ok: false, error: 'Escribe tu nombre.' });
     if (!NIVELES_VALIDOS.has(nivel)) return callback({ ok: false, error: 'Nivel no válido.' });
+    const formaKartLimpia = limpiarTexto(formaKart, 20) || 'kart-oobi';
 
     const carril = siguienteCarrilLibre(sala);
     if (carril === -1) return callback({ ok: false, error: 'Esa sala ya tiene 6 jugadores (máximo).' });
 
-    sala.jugadores.set(socket.id, { nombre: nombreLimpio, nivel, carril });
+    sala.jugadores.set(socket.id, { nombre: nombreLimpio, nivel, formaKart: formaKartLimpia, carril });
     sala.ultimaActividad = Date.now();
     socket.join(codigoLimpio);
     socket.data.sala = codigoLimpio;
@@ -119,17 +119,29 @@ io.on('connection', (socket) => {
     difundirRoster(codigoLimpio);
   });
 
-  // Solo el espectador (anfitrión) puede lanzar la salida.
+  // Solo el espectador (anfitrión) elige la pista.
+  socket.on('seleccionar_pista', ({ idPista }) => {
+    const codigo = socket.data.sala;
+    const sala = salas.get(codigo);
+    if (!sala || sala.espectadorId !== socket.id) return;
+    sala.idPista = limpiarTexto(idPista, 20);
+    sala.ultimaActividad = Date.now();
+    socket.to(codigo).emit('pista_seleccionada', { idPista: sala.idPista });
+  });
+
+  // Solo el espectador (anfitrión) puede lanzar la salida. Se puede
+  // volver a llamar varias veces en la misma sala (botón "Nueva
+  // carrera" tras ver los resultados), cada vez con una cuenta atrás
+  // fresca — por eso no hay guardia de "ya está corriendo" aquí.
   socket.on('iniciar_carrera', () => {
     const codigo = socket.data.sala;
     const sala = salas.get(codigo);
     if (!sala || sala.espectadorId !== socket.id) return;
-    if (sala.estadoPartida === 'carrera') return;
 
     sala.estadoPartida = 'carrera';
     sala.horaInicio = Date.now() + 3000;
     sala.ultimaActividad = Date.now();
-    io.to(codigo).emit('carrera_iniciando', { horaInicio: sala.horaInicio });
+    io.to(codigo).emit('carrera_iniciando', { horaInicio: sala.horaInicio, idPista: sala.idPista });
   });
 
   socket.on('pos', (datos) => {

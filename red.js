@@ -33,6 +33,7 @@ window.Red = (function () {
 
     socket.on('jugadores_actualizados', (roster) => emitirLocal('roster', roster));
     socket.on('carrera_iniciando', (datos) => emitirLocal('carrera_iniciando', datos));
+    socket.on('pista_seleccionada', (datos) => emitirLocal('pista_seleccionada', datos));
     socket.on('pos', (datos) => emitirLocal('pos', datos));
     socket.on('evento', (datos) => emitirLocal('evento', datos));
     socket.on('item_recogido', (datos) => emitirLocal('item_recogido', datos));
@@ -51,13 +52,15 @@ window.Red = (function () {
     });
   }
 
-  function unirseSala(codigo, nombre, nivel) {
+  function unirseSala(codigo, nombre, nivel, formaKart) {
     return new Promise((resolve, reject) => {
-      conectar().emit('unirse_sala', { codigo, nombre, nivel }, (resp) => {
+      conectar().emit('unirse_sala', { codigo, nombre, nivel, formaKart }, (resp) => {
         if (resp && resp.ok) resolve(resp); else reject(new Error((resp && resp.error) || 'Error al unirse a la sala.'));
       });
     });
   }
+
+  function seleccionarPista(idPista) { if (socket) socket.emit('seleccionar_pista', { idPista }); }
 
   function iniciarCarrera() { if (socket) socket.emit('iniciar_carrera'); }
 
@@ -79,5 +82,5 @@ window.Red = (function () {
     if (socket) { socket.disconnect(); socket = null; }
   }
 
-  return { conectar, on, crearSala, unirseSala, iniciarCarrera, enviarPosicion, enviarEvento, enviarItemRecogido, desconectar };
+  return { conectar, on, crearSala, unirseSala, seleccionarPista, iniciarCarrera, enviarPosicion, enviarEvento, enviarItemRecogido, desconectar };
 })();
